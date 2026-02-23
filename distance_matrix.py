@@ -3,7 +3,6 @@ import os
 import re
 import numpy as np
 import pandas as pd
-from sklearn.preprocessing import StandardScaler, MinMaxScaler
 
 # =========================
 #           CONFIG
@@ -15,7 +14,7 @@ args, _ = parser.parse_known_args()
 FILE_PATH = args.excel
 DATA_SHEET = "Edited"
 META_SHEET = "Feature_data"
-# Ensure output filename is compatible with distance script expectations
+# Synced name for teammate's distance script
 OUTPUT_CSV = "preprocessed_output.csv" 
 
 # =========================
@@ -23,7 +22,7 @@ OUTPUT_CSV = "preprocessed_output.csv"
 # =========================
 
 def to_binary(series):
-    """Maps yes/no or available/not available strings to 1/0."""
+    """Maps common categorical truth values to 1/0."""
     s = series.astype(str).str.strip().lower()
     return s.map({
         'yes': 1, 'no': 0, 
@@ -32,19 +31,16 @@ def to_binary(series):
     }).fillna(0)
 
 def universal_numeric_cleaner(x):
-    """
-    Universal cleaner for Task 3: Handles currency (₹), commas, 
-    and resolution patterns (e.g., '1440 x 3216') for any dataset.
-    """
+    """Handles currency (₹), commas, and resolutions (1440 x 3216)."""
     if pd.isna(x): return np.nan
     
-    # 1. Handle resolution/gear patterns like '12x4' or '1440 x 3216'
+    # 1. Handle resolution/multiplication patterns
     if isinstance(x, str) and ('x' in x.lower() or '×' in x):
         parts = re.findall(r"\d+", x.replace(' ', ''))
         if len(parts) >= 2:
             return float(parts[0]) * float(parts[1])
             
-    # 2. Strip currency symbols, units, and commas (e.g., ₹54,999 -> 54999.0)
+    # 2. Strip currency symbols and non-numeric characters
     clean_s = re.sub(r'[^\d.]', '', str(x).replace(',', ''))
     try:
         return float(clean_s)
@@ -61,12 +57,25 @@ def main():
 
     processed_df = pd.DataFrame()
 
+    # Prioritize 'model' for phones and 'product' for tractors (long strings)
+    id_col = None
+    if 'model' in df.columns:
+        id_col = 'model'
+    elif 'product' in df.columns:
+        id_col = 'product'
+    elif 'brand' in df.columns:
+        id_col = 'brand'
+    
+    if id_col:
+        processed_df[id_col] = df[id_col] # Keep the unique label
+    # ---------------------------------------------------
+
     # Apply universal logic based on Feature_data rules
     for _, row in meta.iterrows():
         col_name = row['Feature']
         col_type = row['Type']
         
-        if col_name not in df.columns:
+        if col_name not in df.columns or col_name == id_col:
             continue
             
         if col_type == 'Numeric':
@@ -74,16 +83,17 @@ def main():
         elif col_type == 'Binary':
             processed_df[col_name] = to_binary(df[col_name])
         elif col_type == 'Nominal':
-            # One-Hot Encoding for compatibility with distance matrix
+            # One-Hot Encoding for categorical data compatibility
             dummies = pd.get_dummies(df[col_name], prefix=col_name)
             processed_df = pd.concat([processed_df, dummies], axis=1)
 
-    # Handle missing values to prevent distance matrix errors
-    processed_df = processed_df.fillna(processed_df.mean())
+    # Fill missing values to prevent distance matrix errors
+    numeric_cols = processed_df.select_dtypes(include=[np.number]).columns
+    processed_df[numeric_cols] = processed_df[numeric_cols].fillna(processed_df[numeric_cols].mean())
 
-    # Save to the filename expected by the teammate's script
+    # Final output synced with teammate's script
     processed_df.to_csv(OUTPUT_CSV, index=False)
-    print(f"Task 3 Complete: Universal output saved to {OUTPUT_CSV}")
+    print(f"Task 3 Complete. Universal output: {OUTPUT_CSV}")
 
 if __name__ == "__main__":
     main()
