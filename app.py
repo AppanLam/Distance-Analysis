@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 import os
 
+from dashboard.viz import load_distance_matrix, load_preprocessed_numeric, compute_pca_embedding, plot_embedding, plot_distance_histogram, plot_neighbor_bar
+
 st.set_page_config(page_title="Strategic Product Optimizer", layout="wide")
 st.title("Product Portfolio Analysis")
 
@@ -57,6 +59,33 @@ if os.path.exists(nn_path):
             st.success(f"Unique Positioning: Product is well-differentiated (Dist: {top_neighbor_dist:.4f})")
             
         st.info("Rule Logic: Cannibalization < 0.05 | Overlap < 0.50 | Unique > 0.50")
-        
+
+    # --- Task 2 Visualizations ---
+    dm_path = os.path.join(base_path, "distance_matrix.csv")
+    pre_path = os.path.join(base_path, "preprocessed_output.csv")
+
+    if os.path.exists(dm_path) and os.path.exists(pre_path):
+        st.subheader("Visualizations (Task 2)")
+
+        # 1) Neighbor bar
+        topk = results.sort_values("distance").head(10)
+        nb_df = topk.iloc[:, [2, -1]].copy()
+        nb_df.columns = ["neighbor", "distance"]
+        st.plotly_chart(plot_neighbor_bar(nb_df, selected_product), use_container_width=True)
+
+        # 2) Distance histogram
+        dm = load_distance_matrix(dm_path)
+        st.plotly_chart(plot_distance_histogram(dm), use_container_width=True)
+
+        # 3) PCA embedding + highlight selected + neighbors
+        pre = load_preprocessed_numeric(pre_path)
+        emb_df = compute_pca_embedding(pre, list(dm.index))
+        st.plotly_chart(
+            plot_embedding(emb_df, selected=selected_product, neighbors=nb_df["neighbor"].tolist()),
+            use_container_width=True
+        )
+    else:
+        st.warning("Missing distance_matrix.csv or preprocessed_output.csv for visualizations.")
+
 else:
     st.error(f"No analysis data found for {category}. Please ensure the distance matrix script has been run.")
